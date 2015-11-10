@@ -78,7 +78,7 @@
   [consumer id topic kpartition head-offset fetch-size]
   (try
     (kc/messages consumer id topic kpartition head-offset fetch-size)
-    (catch Exception e (println "Partition not ready" consumer id topic kpartition head-offset fetch-size))))
+    (catch Exception e (info "Partition not ready" consumer id topic kpartition head-offset fetch-size))))
 
 (defn reader-loop [m client-id group-id topic static-partition partitions task-map 
                    replica job-id peer-id task-id ch pending-commits]
@@ -104,7 +104,7 @@
                    head-offset offset]
               (if-not (seq ms)
                 (let [_ (Thread/sleep empty-read-back-off)
-                      fetched (kc/messages consumer "onyx" topic kpartition head-offset fetch-size)]
+                      fetched (messages consumer "onyx" topic kpartition head-offset fetch-size)]
                   (recur fetched head-offset))
                 (let [message ^KafkaMessage (first ms)
                       next-offset ^int (.offset message)
