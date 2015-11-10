@@ -1,4 +1,4 @@
-(defproject aviary/onyx-kafka "0.8.1"
+(defproject aviary/onyx-kafka "0.8.2"
   :description "Onyx plugin for Kafka"
   :url "https://github.com/MichaelDrogalis/onyx-kafka"
   :license {:name "Eclipse Public License"
