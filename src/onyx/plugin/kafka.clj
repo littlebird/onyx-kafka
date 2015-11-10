@@ -74,6 +74,12 @@
     (catch Throwable e
       (fatal e))))
 
+(defn messages
+  [consumer id topic kpartition head-offset fetch-size]
+  (try
+    (kc/messages consumer id topic kpartition head-offset fetch-size)
+    (catch Exception e (println "Partition not ready" consumer id topic kpartition head-offset fetch-size))))
+
 (defn reader-loop [m client-id group-id topic static-partition partitions task-map 
                    replica job-id peer-id task-id ch pending-commits]
   (try
@@ -94,7 +100,7 @@
               deserializer-fn (kw->fn (:kafka/deserializer-fn task-map))]
           (log/info (str "Kafka consumer is starting at offset " offset))
           (try
-            (loop [ms (kc/messages consumer "onyx" topic kpartition offset fetch-size)
+            (loop [ms (messages consumer "onyx" topic kpartition offset fetch-size)
                    head-offset offset]
               (if-not (seq ms)
                 (let [_ (Thread/sleep empty-read-back-off)
@@ -117,14 +123,14 @@
       (throw e))))
 
 (defn check-num-peers-equals-partitions [{:keys [onyx/min-peers onyx/max-peers
-                                                 kafka/partition] :as task-map} 
+                                                 kafka/partition] :as task-map}
                                          n-partitions]
   (let [fixed-partition? (and partition (= 1 max-peers))
         all-partitions-covered? (= n-partitions min-peers max-peers)
-        one-partition? (= 1 n-partitions max-peers)] 
+        one-partition? (= 1 n-partitions max-peers)]
     (when-not (or fixed-partition? all-partitions-covered? one-partition?)
       (let [e (ex-info ":onyx/min-peers must equal :onyx/max-peers and the number of kafka partitions" 
-                       {:n-partitions n-partitions 
+                       {:n-partitions n-partitions
                         :min-peers min-peers
                         :max-peers max-peers
                         :task-map task-map})] 
@@ -146,9 +152,11 @@
         job-id (:onyx.core/job-id event)
         peer-id (:onyx.core/id event)
         task-id (:onyx.core/task-id event)
-        reader-fut (future (reader-loop m client-id group-id topic partition partitions task-map 
-                                        (:onyx.core/replica event) job-id peer-id task-id
-                                        ch pending-commits))]
+        reader-fut (future
+                     (reader-loop
+                      m client-id group-id topic partition partitions task-map
+                      (:onyx.core/replica event) job-id peer-id task-id
+                      ch pending-commits))]
     {:kafka/read-ch ch
      :kafka/reader-future reader-fut
      :kafka/pending-messages pending-messages
@@ -222,12 +230,12 @@
 
 (defn retry-partitions
   [connect topic]
-  (loop [retries 0]
-    (let [partitions (kzk/partitions connect topic)]
+  (loop [retries 1]
+    (let [partitions (partitions connect topic)]
       (if (= :no-node (first partitions))
-        (if (< retries partition-retries)
+        (if (<= retries partition-retries)
           (do
-            (Thread/sleep 1000)
+            (Thread/sleep (* retries 1000))
             (info "Retry" retries "to connect to topic" topic)
             (recur (inc retries)))
           (throw (last partitions)))
@@ -276,7 +284,7 @@
   (write-batch
     [_ {:keys [onyx.core/results]}]
     (let [messages (mapcat :leaves (:tree results))
-          send-futs (doall 
+          send-futs (doall
                       (map (fn [m]
                              (let [k-message (:message m)
                                    k-key (some-> m :key serializer-fn)
