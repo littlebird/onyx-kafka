@@ -248,7 +248,7 @@
         batch-timeout (arg-or-default :onyx/batch-timeout catalog-entry)
         chan-capacity (or (:kafka/chan-capacity catalog-entry) (:kafka/chan-capacity defaults))
         m {"zookeeper.connect" (:kafka/zookeeper catalog-entry)}
-        partitions (kzk/partitions m (:kafka/topic catalog-entry))
+        partitions (retry-partitions m (:kafka/topic catalog-entry))
         done-unsupported? (and (> (count partitions) 1) 
                                (not (:kafka/partition catalog-entry)))
         ch (chan chan-capacity)
