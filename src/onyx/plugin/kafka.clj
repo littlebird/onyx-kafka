@@ -212,6 +212,27 @@
     [_ _]
     @drained?))
 
+(def partition-retries 3)
+
+(defn partitions
+  [connect topic]
+  (try
+    (kzk/partitions connect topic)
+    (catch Exception e [:no-node e])))
+
+(defn retry-partitions
+  [connect topic]
+  (loop [retries 0]
+    (let [partitions (kzk/partitions connect topic)]
+      (if (= :no-node (first partitions))
+        (if (< retries partition-retries)
+          (do
+            (Thread/sleep 1000)
+            (info "Retry" retries "to connect to topic" topic)
+            (recur (inc retries)))
+          (throw (last partitions)))
+        partitions))))
+
 (defn read-messages [pipeline-data]
   (let [catalog-entry (:onyx.core/task-map pipeline-data)
         max-pending (arg-or-default :onyx/max-pending catalog-entry)
@@ -219,8 +240,8 @@
         batch-timeout (arg-or-default :onyx/batch-timeout catalog-entry)
         chan-capacity (or (:kafka/chan-capacity catalog-entry) (:kafka/chan-capacity defaults))
         m {"zookeeper.connect" (:kafka/zookeeper catalog-entry)}
-        partitions (kzk/partitions m (:kafka/topic catalog-entry))
-        done-unsupported? (and (> (count partitions) 1) 
+        partitions (retry-partitions m (:kafka/topic catalog-entry))
+        done-unsupported? (and (> (count partitions) 1)
                                (not (:kafka/partition catalog-entry)))
         ch (chan chan-capacity)
         pending-messages (atom {})
